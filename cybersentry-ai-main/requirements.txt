@@ -1,0 +1,79 @@
+#<!--fastapi==0.104.1 -->
+#/*streamlit==1.28.0*/
+#/*uvicorn==0.24.0
+#/*scikit-learn==1.4.2
+# pandas==2.1.3
+#numpy==1.26.4
+#python-multipart==0.0.6
+#pefile==2023.2.7
+#/*plotly==5.17.0 */
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# AI/ML Core
+scikit-learn==1.3.2
+xgboost==2.0.0
+lightgbm==4.1.0
+
+# Deep Learning
+tensorflow==2.15.0
+torch==2.1.0
+transformers==4.35.0
+
+# Explainable AI
+shap==0.43.0
+lime==0.2.0.1
+interpret==0.5.1
+
+# Security Analysis
+yara-python==4.3.1
+lief==0.13.2
+python-magic==0.4.27
+pefile==2023.2.7
+androguard==4.1.3
+
+# Data Processing
+pandas==2.1.4
+numpy==1.24.3
+scipy==1.11.4
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+databases[aiosqlite]==0.9.0
+
+# Frontend
+streamlit==1.28.1
+plotly==5.17.0
+streamlit-lottie==0.0.5
+gradio==3.50.0
+
+# API Client
+requests==2.31.0
+aiohttp==3.9.1
+httpx==0.25.1
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+loguru==0.7.2
+tqdm==4.66.1
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Deployment
+docker==6.1.3
+gunicorn==21.2.0
+
+
+# Authentication additions
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+pydantic[email]==2.5.0
