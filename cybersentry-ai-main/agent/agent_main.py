@@ -7,10 +7,10 @@ import os
 from datetime import datetime
 from typing import Dict, Any
 
-from .decisions import decide
-from .comms.whatsapp import send_whatsapp
-from .comms.voice import call_customer
-from .utils import console, SeenCache
+from agent.decisions import decide
+from agent.comms.whatsapp import send_whatsapp
+from agent.comms.voice import call_customer
+from agent.utils import console, SeenCache
 
 API_URL = os.getenv("AGENT_API_URL", "http://localhost:8000")
 INTERVAL = int(os.getenv("POLL_INTERVAL", "10"))
