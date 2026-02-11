@@ -25,11 +25,11 @@ def show_user_management():
             # In production, call your API
             # For demo, show sample data
             users_data = [
-                {"username": "admin", "email": "admin@company.com", "role": "Administrator", "status": "active", "last_login": "2024-01-15 09:30"},
-                {"username": "jane_doe", "email": "jane@company.com", "role": "HR Manager", "status": "active", "last_login": "2024-01-15 08:15"},
-                {"username": "john_smith", "email": "john@company.com", "role": "Developer", "status": "active", "last_login": "2024-01-14 14:20"},
-                {"username": "bob_wilson", "email": "bob@company.com", "role": "Finance", "status": "blocked", "last_login": "2024-01-13 02:30"},
-                {"username": "sarah_connor", "email": "sarah@company.com", "role": "Marketing", "status": "active", "last_login": "2024-01-15 10:45"},
+                {"username": "admin", "email": "admin@company.com", "role": "Administrator", "status": "active", "last_login": "2026-01-15 09:30"},
+                {"username": "jane doe", "email": "jane@company.com", "role": "HR Manager", "status": "active", "last_login": "2026-01-15 08:15"},
+                {"username": "john smith", "email": "john@company.com", "role": "Developer", "status": "active", "last_login": "2026-01-14 14:20"},
+                {"username": "bob wilson", "email": "bob@company.com", "role": "Finance", "status": "blocked", "last_login": "2026-01-13 02:30"},
+                {"username": "sarah connor", "email": "sarah@company.com", "role": "Marketing", "status": "active", "last_login": "2026-01-15 10:45"},
             ]
             
             df = pd.DataFrame(users_data)
@@ -82,9 +82,9 @@ def show_user_management():
         st.info("Recent login activity (last 24 hours)")
         
         activity_data = [
-            {"user": "jane_doe", "time": "08:15 AM", "ip": "192.168.1.101", "status": "✅", "risk": "low"},
-            {"user": "bob_wilson", "time": "02:30 AM", "ip": "45.67.89.123", "status": "🚫", "risk": "high"},
-            {"user": "john_smith", "time": "02:15 PM", "ip": "192.168.1.105", "status": "✅", "risk": "low"},
+            {"user": "jane doe", "time": "08:15 AM", "ip": "192.168.1.101", "status": "✅", "risk": "low"},
+            {"user": "bob wilson", "time": "02:30 AM", "ip": "45.67.89.123", "status": "🚫", "risk": "high"},
+            {"user": "john smith", "time": "02:15 PM", "ip": "192.168.1.105", "status": "✅", "risk": "low"},
             {"user": "admin", "time": "09:30 AM", "ip": "192.168.1.100", "status": "✅", "risk": "low"},
         ]
         
@@ -107,10 +107,10 @@ def show_user_management():
         
         # Show security alerts
         events = [
-            {"time": "02:30 AM", "event": "Failed login attempts", "user": "bob_wilson", "severity": "🔴 High"},
-            {"time": "09:15 AM", "event": "Password changed", "user": "jane_doe", "severity": "🟢 Low"},
-            {"time": "11:45 AM", "event": "New user registered", "user": "sarah_connor", "severity": "🟡 Medium"},
-            {"time": "03:20 PM", "event": "File upload blocked", "user": "john_smith", "severity": "🟡 Medium"},
+            {"time": "02:30 AM", "event": "Failed login attempts", "user": "bob wilson", "severity": "🔴 High"},
+            {"time": "09:15 AM", "event": "Password changed", "user": "jane doe", "severity": "🟢 Low"},
+            {"time": "11:45 AM", "event": "New user registered", "user": "sarah connor", "severity": "🟡 Medium"},
+            {"time": "03:20 PM", "event": "File upload blocked", "user": "john smith", "severity": "🟡 Medium"},
         ]
         
         for event in events:

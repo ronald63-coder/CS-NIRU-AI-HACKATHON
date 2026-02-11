@@ -224,19 +224,19 @@ async def scan_file(file: UploadFile = File(...)):
 def legacy_user_activity():
     return {
         "users": [
-            {"name": "Ronny_Ogeya", "status": "blocked" if "Ronny_Ogeya" in auto_blocker.list_blocked() else "active",
+            {"name": "Ronny Ogeya", "status": "blocked" if "Ronny_Ogeya" in auto_blocker.list_blocked() else "active",
              "risk": "high", "last_action": "Downloading sensitive files", "login_time": "02:30 AM", "department": "Finance"},
-            {"name": "Brightone_Omondi", "status": "active", "risk": "low", "last_action": "Viewing dashboard",
+            {"name": "Brightone Omondi", "status": "active", "risk": "low", "last_action": "Viewing dashboard",
              "login_time": "09:15 AM", "department": "Marketing"},
-            {"name": "bob_wilson", "status": "blocked" if "bob_wilson" in auto_blocker.list_blocked() else "inactive",
+            {"name": "bob wilson", "status": "blocked" if "bob_wilson" in auto_blocker.list_blocked() else "inactive",
              "risk": "medium", "last_action": "Accessed HR records", "login_time": "03:15 AM", "department": "HR"},
-            {"name": "Purity_Kerubo", "status": "active", "risk": "low", "last_action": "Code review",
+            {"name": "Purity Kerubo", "status": "active", "risk": "low", "last_action": "Code review",
              "login_time": "10:30 AM", "department": "Engineering"}
         ],
         "alerts": [
-            {"type": "malware_detected", "severity": "high", "user": "Ronny_Ogeya", "time": "12:37 PM"},
-            {"type": "unusual_login", "severity": "medium", "user": "bob_wilson", "time": "07:15 AM"},
-            {"type": "mass_download", "severity": "medium", "user": "demo_attacker", "time": "01:45 AM"}
+            {"type": "malware_detected", "severity": "high", "user": "Ronny Ogeya", "time": "12:37 PM"},
+            {"type": "unusual_login", "severity": "medium", "user": "bob wilson", "time": "07:15 AM"},
+            {"type": "mass_download", "severity": "medium", "user": "demo attacker", "time": "01:45 AM"}
         ],
         "blocked_users": auto_blocker.list_blocked(),
         "total_users": 4,

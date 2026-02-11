@@ -62,14 +62,14 @@ st.markdown("""
   transition: transform .3s ease;
 }
 .metric-card:hover { transform: translateY(-4px); }
-.metric-card h3 { color: #374151; font-weight: 600; }
-.metric-card h2 { color: #111827; font-size: 2.2rem; margin: .2rem 0; }
-.metric-card small { color: #6b7280; }
+.metric-card h3 { color: #6200EE; font-weight: 600; }
+.metric-card h2 { color: #03DAC6; font-size: 2.2rem; margin: .2rem 0; }
+.metric-card small { color: #3700B3; }
 
 /* ----------  alerts  ---------- */
-.alert-critical { background: var(--grad-danger); color: #fff; padding: 1.2rem; border-radius: 12px; font-weight: 600; border-left: 6px solid #e84393; animation: pulse 2s infinite; }
+.alert-critical { background: var(--grad-danger); color: #3700B3; padding: 1.2rem; border-radius: 12px; font-weight: 600; border-left: 6px solid #e84393; animation: pulse 2s infinite; }
 .alert-warning  { background: var(--grad-warn);   color: #2d3436; padding: 1.2rem; border-radius: 12px; font-weight: 600; border-left: 6px solid #fdcb6e; }
-.alert-safe     { background: var(--grad-safe);   color: #2d3436; padding: 1.2rem; border-radius: 12px; font-weight: 600; border-left: 6px solid #00cec9; }
+.alert-safe     { background: var(--grad-safe);   color: #6200EE; padding: 1.2rem; border-radius: 12px; font-weight: 600; border-left: 6px solid #00cec9; }
 
 /* ----------  user cards  ---------- */
 .user-card {
@@ -106,6 +106,7 @@ st.markdown("""
 .stButton > button {
   background: var(--grad-1);
   color: #1f2937;
+            
   border: none;
   padding: .6rem 1.4rem;
   border-radius: 12px;
@@ -124,7 +125,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --------------------  TOP USER BAR  --------------------
+# --------------------  TOP USER BAR (#1f2937) --------------------
 with st.sidebar:
     st.markdown(f"""
     <div style='padding: 1rem; background: var(--glass); border-radius: 12px; margin-bottom: 1rem;'>

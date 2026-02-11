@@ -154,16 +154,7 @@ def show_login_page():
         if reg_btn:
             register_user()
 
-    # --------------------  DEMO CREDS FOOTER  --------------------
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center;'>
-        <p><strong>Demo Credentials:</strong></p>
-        <p>👑 Admin: <code>admin / Admin@123</code></p>
-        <p>👨‍💼 User: <code>jane_doe / Password@123</code></p>
-        <p>👨‍🔧 IT Staff: <code>it_user / Secure@123</code></p>
-    </div>
-    """, unsafe_allow_html=True)
+    
 
 # ------------------------------------------------------------------
 #  EXPORTS  (same interface as before)

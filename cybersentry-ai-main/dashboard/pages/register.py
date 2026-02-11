@@ -139,20 +139,7 @@ def show_register_page():
                     except Exception as e:
                         st.error(f"❌ Error: {str(e)}")
         
-        # Demo credentials info
-        st.markdown("---")
-        with st.expander("🔐 Need demo access?"):
-            st.markdown("""
-            **Default Demo Accounts:**
-            
-            | Username | Password | Role |
-            |----------|----------|------|
-            | `admin` | `Admin@123` | 👑 Administrator |
-            | `analyst` | `Analyst@123` | 🔍 Security Analyst |
-            | `user` | `User@123` | 👤 Regular User |
-            
-            **Or create your own account above!**
-            """)
+        
         
         # Back to login link
         st.markdown("---")
