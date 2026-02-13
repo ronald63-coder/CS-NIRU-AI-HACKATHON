@@ -25,8 +25,17 @@ from scanner.threat_intelligence import ThreatIntelligenceAI
 import uvicorn
 from engine import scan_file
 from fastapi.responses import JSONResponse
-from auth.routers import router as auth_router
-from database.models import init_db as init_auth_db
+try:
+    from auth.routers import router as auth_router
+    from database.models import init_db as init_auth_db
+    AUTH_AVAILABLE = True
+except ImportError:
+ AUTH_AVAILABLE = False
+try:
+    import pefile
+    PEFILE_AVAILABLE = True
+except ImportError:
+    PEFILE_AVAILABLE = False
 from contextlib import asynccontextmanager
 # ------------------------------------------------------------------
 #  Config & third-party helpers
@@ -40,31 +49,275 @@ class Config:
     AUTO_BLOCK_ENABLED = True
     API_HOST, API_PORT = "0.0.0.0", 8000
 
-# ----------  LIGHTWEIGHT UTILS  ----------
+# ------------------------------------------------------------------
+# UTILITIES
+# ------------------------------------------------------------------
 def calculate_entropy(data: bytes) -> float:
-    if not data: return 0.0
+    """Calculate Shannon entropy of byte sequence"""
+    if not data:
+        return 0.0
     counts = np.bincount(np.frombuffer(data[:1000], dtype=np.uint8))
-    probs  = counts / counts.sum()
+    probs = counts / counts.sum()
     return -np.sum([p * np.log2(p) for p in probs if p > 0])
 
+
+def get_file_type(file_bytes: bytes) -> str:
+    """Detect file type from magic bytes"""
+    if file_bytes.startswith(b'\x89PNG'):
+        return "image_png"
+    elif file_bytes.startswith(b'\xff\xd8\xff'):
+        return "image_jpeg"
+    elif file_bytes.startswith(b'%PDF'):
+        return "document_pdf"
+    elif file_bytes.startswith(b'PK\x03\x04'):
+        return "zip_archive"
+    elif file_bytes.startswith(b'MZ'):
+        return "executable_pe"
+    elif file_bytes.startswith(b'#!/'):
+        return "script_shebang"
+    elif b'<html' in file_bytes[:1000].lower():
+        return "document_html"
+    elif all(32 <= b <= 126 or b in (9, 10, 13) for b in file_bytes[:1000]):
+        return "text_plain"
+    else:
+        return "unknown_binary"
+
+
 def extract_features(file_bytes: bytes) -> dict:
-    feats = {"size": len(file_bytes), "entropy": calculate_entropy(file_bytes),
-             "sections": 0, "imports": 0, "suspicious_sections": False}
-    try:
-        import pefile
-        if file_bytes.startswith(b'MZ'):
+    """Extract comprehensive features from file"""
+    feats = {
+        "size": len(file_bytes),
+        "entropy": calculate_entropy(file_bytes),
+        "file_type": get_file_type(file_bytes),
+        "sections": 0,
+        "imports": 0,
+        "suspicious_sections": False,
+        "is_packed": False,
+        "has_signature": False
+    }
+    
+    # PE analysis for executables
+    if feats["file_type"] == "executable_pe" and PEFILE_AVAILABLE:
+        try:
             pe = pefile.PE(data=file_bytes)
+            
+            # Section analysis
             feats["sections"] = len(pe.sections)
-            feats["imports"]  = len(pe.DIRECTORY_ENTRY_IMPORT) if hasattr(pe, 'DIRECTORY_ENTRY_IMPORT') else 0
-            feats["suspicious_sections"] = any(
-                section.Name.decode(errors='ignore').strip('\x00').lower() in {'.packed', '.upx', '.crypt'}
-                for section in pe.sections)
+            section_names = []
+            for section in pe.sections:
+                name = section.Name.decode(errors='ignore').strip('\x00').lower()
+                section_names.append(name)
+                
+                # Detect suspicious section names
+                if name in {'.packed', '.upx', '.crypt', '.vmp', '.themida', '.aspack'}:
+                    feats["suspicious_sections"] = True
+                
+                # High entropy section = likely packed
+                if section.get_entropy() > 7.0:
+                    feats["is_packed"] = True
+            
+            # Import analysis
+            if hasattr(pe, 'DIRECTORY_ENTRY_IMPORT'):
+                feats["imports"] = len(pe.DIRECTORY_ENTRY_IMPORT)
+                
+                # Check for suspicious imports
+                suspicious_apis = {
+                    b'CreateRemoteThread', b'VirtualAllocEx', b'WriteProcessMemory',
+                    b'ReadProcessMemory', b'OpenProcess', b'TerminateProcess',
+                    b'WinExec', b'ShellExecute', b'URLDownloadToFile',
+                    b'InternetOpen', b'InternetConnect', b'HttpSendRequest'
+                }
+                
+                for entry in pe.DIRECTORY_ENTRY_IMPORT:
+                    for func in entry.imports:
+                        if func.name:
+                            for api in suspicious_apis:
+                                if api in func.name:
+                                    feats["has_signature"] = True
+            
+            # Check for digital signature
+            if hasattr(pe, 'DIRECTORY_ENTRY_SECURITY'):
+                feats["has_signature"] = True
+            
             pe.close()
-    except Exception:
-        pass
+            
+        except Exception:
+            # Corrupted PE = suspicious
+            feats["is_packed"] = True
+    
     return feats
 
-# ----------  DB  ----------
+# ------------------------------------------------------------------
+# AI/ML CLASSIFIERS (FIXED)
+# ------------------------------------------------------------------
+class MalwareClassifier:
+    """
+    Rule-based malware classifier with realistic, calibrated thresholds.
+    Returns 0-1 probability where:
+    - < 0.2 = clearly benign
+    - 0.2-0.5 = low risk
+    - 0.5-0.75 = suspicious
+    - > 0.75 = likely malicious
+    """
+    
+    def predict(self, features: list, file_type: str = "unknown") -> float:
+        size, entropy, sections, imports = features
+        
+        # === BENIGN FILE FAST-PATH ===
+        if file_type in ("image_png", "image_jpeg", "document_pdf", "text_plain"):
+            # These file types are almost always safe
+            if entropy < 6.0 and size < 10_000_000:
+                return 0.05  # 5% risk = clearly benign
+        
+        # === CLEARLY BENIGN INDICATORS ===
+        if file_type == "text_plain" and entropy < 4.5:
+            return 0.08
+        
+        if file_type == "image_png" and 0.8 < entropy < 7.5:
+            return 0.10  # PNGs have natural entropy
+        
+        # === CALCULATE RISK COMPONENTS ===
+        
+        # Entropy score (0-1)
+        # 0-4: Low (text, uncompressed)
+        # 4-6: Medium (compressed, normal)
+        # 6-7: High (packed)
+        # 7-8: Very high (encrypted/strongly packed)
+        if entropy < 4.0:
+            entropy_score = 0.0
+        elif entropy < 6.0:
+            entropy_score = (entropy - 4.0) / 2.0 * 0.3  # 0-0.3
+        elif entropy < 7.0:
+            entropy_score = 0.3 + (entropy - 6.0) * 0.4  # 0.3-0.7
+        else:
+            entropy_score = 0.7 + min((entropy - 7.0) / 1.0, 0.3)  # 0.7-1.0
+        
+        # Size score (log scale)
+        # < 1KB: Tiny (suspicious if high entropy)
+        # 1KB-1MB: Normal
+        # 1-10MB: Large
+        # > 10MB: Very large
+        if size < 1024:
+            size_score = 0.2  # Tiny files slightly suspicious
+        elif size < 1_000_000:
+            size_score = 0.0
+        elif size < 10_000_000:
+            size_score = 0.15
+        else:
+            size_score = 0.25
+        
+        # PE-specific scores
+        pe_score = 0.0
+        if sections > 0:
+            # Many sections = complex
+            if sections > 8:
+                pe_score += 0.15
+            if sections > 12:
+                pe_score += 0.10
+            
+            # Few sections in large file = packed
+            if sections < 3 and size > 500_000:
+                pe_score += 0.20
+        
+        if imports > 0:
+            # Many imports = complex
+            if imports > 100:
+                pe_score += 0.10
+            if imports > 300:
+                pe_score += 0.15
+        
+        # === COMBINE SCORES ===
+        # Weights: entropy matters most, then PE features, then size
+        base_score = (
+            entropy_score * 0.50 +
+            pe_score * 0.35 +
+            size_score * 0.15
+        )
+        
+        # === ADJUSTMENTS ===
+        
+        # Non-PE files with normal entropy are usually safe
+        if sections == 0 and entropy < 5.5 and file_type != "unknown_binary":
+            base_score *= 0.4
+        
+        # Packed files are highly suspicious
+        # (checked via features dict, not passed here - handled in risk scoring)
+        
+        # Cap and return
+        return float(np.clip(base_score, 0.0, 0.95))
+
+
+class AnomalyDetector:
+    """
+    Detect truly anomalous files, not everything.
+    Returns True only for genuine outliers.
+    """
+    
+    def detect(self, features: list, feats_dict: dict) -> bool:
+        size, entropy, sections, imports = features
+        
+        anomalies = 0
+        
+        # Extreme size
+        if size > 50_000_000:  # > 50MB
+            anomalies += 1
+        if size < 50 and entropy > 6.5:  # Tiny but encrypted
+            anomalies += 1
+        
+        # Extreme entropy
+        if entropy > 7.8:  # Almost certainly packed/encrypted
+            anomalies += 1
+        if entropy < 1.0 and size > 10000:  # Large but no entropy = suspicious
+            anomalies += 1
+        
+        # PE anomalies
+        if sections > 0:
+            if sections > 20:  # Absurdly complex
+                anomalies += 1
+            if imports > 1000:  # Massive import table
+                anomalies += 1
+            if sections == 1 and size > 1000000:  # Single section, large = packed
+                anomalies += 1
+        
+        # File type mismatch
+        if feats_dict.get("is_packed") and feats_dict.get("has_signature"):
+            # Signed but packed = unusual
+            anomalies += 1
+        
+        # Need 2+ anomalies to flag
+        return anomalies >= 2
+
+
+class BehaviorAI:
+    """User behavior analysis stub"""
+    
+    def analyze_login(self, user: str, ctx: dict) -> dict:
+        return {"risk_level": "low", "reason": "baseline OK"}
+
+
+# ------------------------------------------------------------------
+# SECURITY & DATABASE
+# ------------------------------------------------------------------
+class AutoBlocker:
+    def __init__(self):
+        self._blocked = set()
+    
+    def block(self, user: str, reason: str):
+        self._blocked.add(user)
+    
+    def unblock(self, user: str) -> bool:
+        if user in self._blocked:
+            self._blocked.remove(user)
+            return True
+        return False
+    
+    def list_blocked(self):
+        return list(self._blocked)
+
+
+auto_blocker = AutoBlocker()
+
+
 def init_detection_db():
     conn = sqlite3.connect(Config.DATABASE_PATH, check_same_thread=False)
     cur = conn.cursor()
@@ -80,7 +333,9 @@ def init_detection_db():
             details TEXT
         )
     """)
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
+
 
 def log_threat(data: dict):
     conn = sqlite3.connect(Config.DATABASE_PATH, check_same_thread=False)
@@ -88,10 +343,18 @@ def log_threat(data: dict):
     cur.execute("""
         INSERT INTO threats (timestamp, username, threat_level, action_taken, file_name, confidence, details)
         VALUES (?,?,?,?,?,?,?)
-    """, (data["timestamp"], data["username"], data["threat_level"],
-          data["action_taken"], data["file_name"], data["confidence"],
-          json.dumps(data.get("details", {}))))
-    conn.commit(); conn.close()
+    """, (
+        data["timestamp"],
+        data["username"],
+        data["threat_level"],
+        data["action_taken"],
+        data["file_name"],
+        data["confidence"],
+        json.dumps(data.get("details", {}))
+    ))
+    conn.commit()
+    conn.close()
+
 
 def get_threats(limit: int = 50):
     conn = sqlite3.connect(Config.DATABASE_PATH, check_same_thread=False)
@@ -99,96 +362,146 @@ def get_threats(limit: int = 50):
     cur = conn.cursor()
     cur.execute("SELECT * FROM threats ORDER BY timestamp DESC LIMIT ?", (limit,))
     rows = [dict(r) for r in cur.fetchall()]
-    conn.close(); return rows
+    conn.close()
+    return rows
 
-# ----------  AI STUBS  ----------
-class MalwareClassifier:
-    def predict(self, features: list) -> float:
-        weights = np.array([0.3, 0.4, 0.15, 0.15])  # size,entropy,sections,imports
-        return float(np.clip(np.dot(np.array(features), weights), 0, 1))
 
-class AnomalyDetector:
-    def __init__(self):
-        self.mean = np.array([3e6, 5.5, 4., 50.]); self.std = np.array([2e6, 1.5, 2., 30.])
-    def detect(self, features: list) -> bool:
-        return bool(np.any(np.abs((np.array(features) - self.mean) / self.std) > 2.5))
-
-class BehaviorAI:
-    def analyze_login(self, user: str, ctx: dict) -> dict:
-        return {"risk_level": "low", "reason": "baseline OK"}
-
-# ----------  SECURITY  ----------
-class AutoBlocker:
-    def __init__(self): self._blocked = set()
-    def block(self, u: str, r: str): self._blocked.add(u)
-    def unblock(self, u: str) -> bool:
-        if u in self._blocked: self._blocked.remove(u); return True
-        return False
-    def list_blocked(self): return list(self._blocked)
-
-auto_blocker = AutoBlocker()
-
-# ----------  FASTAPI LIFESPAN  ----------
+# ------------------------------------------------------------------
+# FASTAPI SETUP
+# ------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Starting CyberSentry AI + Auth...")
-    init_auth_db()        # auth tables
-    init_detection_db()   # detection tables
-    print("✅ All DB initialised")
+    print("🚀 Starting CyberSentry AI...")
+    if AUTH_AVAILABLE:
+        init_auth_db()
+    init_detection_db()
+    print("✅ All databases initialized")
     yield
     print("🛑 Shutting down...")
+
 
 app = FastAPI(title="CyberSentry AI API", version="2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501", "http://127.0.0.1:8501"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ----------  ROUTES  ----------
-app.include_router(auth_router)   # /auth/*
+if AUTH_AVAILABLE:
+    app.include_router(auth_router)
 
-# --------------------------------------------------
-#  NEW SCAN ENDPOINT (full stack)
-# --------------------------------------------------
+# ------------------------------------------------------------------
+# CORE SCAN ENDPOINT (FIXED)
+# ------------------------------------------------------------------
 @app.post("/api/v1/scan")
 async def scan_file(file: UploadFile = File(...)):
+    """
+    Scan file for malware with accurate verdicts:
+    - benign: clearly safe (images, text, normal docs)
+    - low_risk: slight indicators but likely safe
+    - suspicious: mixed signals, needs review
+    - likely_malicious: strong indicators
+    - malicious: critical threat
+    """
     try:
         content = await file.read()
+        
         if len(content) > Config.MAX_FILE_SIZE:
             raise HTTPException(400, "File too large")
-
-        feats   = extract_features(content)
-        vec     = [feats["size"], feats["entropy"], feats["sections"], feats["imports"]]
-        ml_prob = MalwareClassifier().predict(vec)
-        anomaly = AnomalyDetector().detect(vec)
-
-        risk, reasons = 0, []
-        if ml_prob > 0.7:
-            risk += int(ml_prob * 40); reasons.append(f"AI {ml_prob:.1%}")
+        
+        # Extract features
+        feats = extract_features(content)
+        
+        # Build feature vector
+        vec = [
+            feats["size"],
+            feats["entropy"],
+            feats["sections"],
+            feats["imports"]
+        ]
+        
+        # AI predictions
+        ml_prob = MalwareClassifier().predict(vec, feats["file_type"])
+        anomaly = AnomalyDetector().detect(vec, feats)
+        
+        # Calculate risk score (0-100)
+        risk = 0
+        reasons = []
+        
+        # Base ML score
+        risk += int(ml_prob * 50)  # 0-50 points
+        if ml_prob > 0.5:
+            reasons.append(f"ML model: {ml_prob:.1%} malicious probability")
+        
+        # Anomaly bonus
         if anomaly:
-            risk += 25; reasons.append("Anomaly detected")
+            risk += 15
+            reasons.append("Statistical anomaly detected")
+        
+        # File type adjustments
+        if feats["file_type"] in ("image_png", "image_jpeg", "text_plain"):
+            risk -= 20  # Strong benign signal
+            reasons.append(f"Safe file type: {feats['file_type']}")
+        elif feats["file_type"] == "executable_pe":
+            risk += 10  # Executables need scrutiny
+            reasons.append("Executable file requires analysis")
+        
+        # PE-specific indicators
         if feats["suspicious_sections"]:
-            risk += 20; reasons.append("Suspicious PE sections")
-
-        if risk >= 70:
-            verdict, level, conf = "malicious", "critical", ml_prob
+            risk += 20
+            reasons.append("Suspicious section names detected")
+        
+        if feats["is_packed"]:
+            risk += 25
+            reasons.append("Packing/encryption detected")
+        
+        if feats["has_signature"]:
+            risk -= 10  # Signed = slightly more trustworthy
+            reasons.append("Digital signature present")
+        
+        # Entropy extremes
+        if feats["entropy"] > 7.5:
+            risk += 15
+            reasons.append(f"Very high entropy: {feats['entropy']:.2f}")
+        elif feats["entropy"] < 2.0:
+            risk -= 10
+            reasons.append(f"Low entropy (readable): {feats['entropy']:.2f}")
+        
+        # Clamp risk
+        risk = max(0, min(100, risk))
+        
+        # Determine verdict based on calibrated thresholds
+        if risk >= 80:
+            verdict = "malicious"
+            level = "critical"
+            conf = ml_prob
+        elif risk >= 60:
+            verdict = "likely_malicious"
+            level = "high"
+            conf = ml_prob
         elif risk >= 40:
-            verdict, level, conf = "suspicious", "high", ml_prob
-        elif risk >= 20:
-            verdict, level, conf = "suspicious_low", "medium", ml_prob
+            verdict = "suspicious"
+            level = "medium"
+            conf = max(ml_prob, 0.5)
+        elif risk >= 15:
+            verdict = "low_risk"
+            level = "low"
+            conf = 1 - ml_prob
         else:
-            verdict, level, conf = "benign", "low", 1 - ml_prob
-
-        user_info = BehaviorAI().analyze_login("demo_user", {})
+            verdict = "benign"
+            level = "low"
+            conf = 1 - ml_prob
+        
+        # Auto-block only for critical
         auto_blocked = False
         if level == "critical" and Config.AUTO_BLOCK_ENABLED:
             auto_blocker.block("demo_user", f"Critical threat: {verdict}")
             auto_blocked = True
-
+        
+        # Log
         log_threat({
             "timestamp": datetime.now().isoformat(),
             "username": "demo_user",
@@ -197,9 +510,13 @@ async def scan_file(file: UploadFile = File(...)):
             "verdict": verdict,
             "confidence": round(conf, 3),
             "action_taken": "auto_blocked" if auto_blocked else "logged",
-            "details": {"reasons": reasons, "features": feats}
+            "details": {
+                "reasons": reasons,
+                "features": feats,
+                "risk_score": risk
+            }
         })
-
+        
         return {
             "filename": file.filename,
             "verdict": verdict,
@@ -207,28 +524,41 @@ async def scan_file(file: UploadFile = File(...)):
             "risk_score": risk,
             "threat_level": level,
             "detection_reasons": reasons,
-            "ai_models_used": ["RandomForest", "AnomalyDetector"],
+            "file_type": feats["file_type"],
+            "features": {
+                "size": feats["size"],
+                "entropy": round(feats["entropy"], 2),
+                "sections": feats["sections"],
+                "imports": feats["imports"]
+            },
+            "indicators": {
+                "suspicious_sections": feats["suspicious_sections"],
+                "is_packed": feats["is_packed"],
+                "has_signature": feats["has_signature"]
+            },
+            "ai_models_used": ["CalibratedRuleEngine", "AnomalyDetector"],
             "ai_confidence": round(ml_prob, 3),
             "anomaly_detected": anomaly,
-            "user_behavior": user_info,
             "auto_blocked": auto_blocked,
             "timestamp": datetime.now().isoformat()
         }
+        
     except Exception as e:
         raise HTTPException(500, f"Scan failed: {str(e)}")
 
-# --------------------------------------------------
-#  LEGACY COMPAT ROUTES (Streamlit still works)
-# --------------------------------------------------
+
+# ------------------------------------------------------------------
+# LEGACY ROUTES (Dashboard compatibility)
+# ------------------------------------------------------------------
 @app.get("/user-activity")
 def legacy_user_activity():
     return {
         "users": [
-            {"name": "Ronny Ogeya", "status": "blocked" if "Ronny_Ogeya" in auto_blocker.list_blocked() else "active",
+            {"name": "Ronny Ogeya", "status": "blocked" if "Ronny Ogeya" in auto_blocker.list_blocked() else "active",
              "risk": "high", "last_action": "Downloading sensitive files", "login_time": "02:30 AM", "department": "Finance"},
             {"name": "Brightone Omondi", "status": "active", "risk": "low", "last_action": "Viewing dashboard",
              "login_time": "09:15 AM", "department": "Marketing"},
-            {"name": "bob wilson", "status": "blocked" if "bob_wilson" in auto_blocker.list_blocked() else "inactive",
+            {"name": "bob wilson", "status": "blocked" if "bob wilson" in auto_blocker.list_blocked() else "inactive",
              "risk": "medium", "last_action": "Accessed HR records", "login_time": "03:15 AM", "department": "HR"},
             {"name": "Purity Kerubo", "status": "active", "risk": "low", "last_action": "Code review",
              "login_time": "10:30 AM", "department": "Engineering"}
@@ -236,16 +566,18 @@ def legacy_user_activity():
         "alerts": [
             {"type": "malware_detected", "severity": "high", "user": "Ronny Ogeya", "time": "12:37 PM"},
             {"type": "unusual_login", "severity": "medium", "user": "bob wilson", "time": "07:15 AM"},
-            {"type": "mass_download", "severity": "medium", "user": "demo attacker", "time": "01:45 AM"}
+            {"type": "mass_download", "severity": "medium", "user": "demo_attacker", "time": "01:45 AM"}
         ],
         "blocked_users": auto_blocker.list_blocked(),
         "total_users": 4,
         "active_threats": len(auto_blocker.list_blocked())
     }
 
+
 @app.get("/threat-history")
 def legacy_threat_history():
     return {"threat_history": get_threats(50)}
+
 
 @app.get("/system-stats")
 def legacy_system_stats():
@@ -258,14 +590,17 @@ def legacy_system_stats():
         "last_threat_detected": datetime.now().isoformat()
     }
 
+
 @app.get("/blocked-users")
 def legacy_blocked_users():
     return {"blocked_users": auto_blocker.list_blocked()}
+
 
 @app.post("/unblock-user")
 def legacy_unblock_user(username: str):
     success = auto_blocker.unblock(username)
     return {"action": "UNBLOCKED" if success else "NOT_FOUND", "user": username}
+
 
 @app.post("/simulate-threat")
 def legacy_simulate_threat():
@@ -279,6 +614,7 @@ def legacy_simulate_threat():
         "auto_block_details": {"user": user, "reason": reason, "timestamp": datetime.now().isoformat()},
         "timestamp": datetime.now().isoformat()
     }
+
 
 @app.get("/health")
 def legacy_health():
@@ -295,33 +631,36 @@ def legacy_health():
         }
     }
 
-# ----------  ROOT  ----------
+
 @app.get("/")
 async def root():
     return {
-        "message": "CyberSentry AI with Authentication",
+        "message": "CyberSentry AI API",
         "version": "2.0",
         "docs": "/docs",
-        "auth_endpoints": ["/auth/login", "/auth/register", "/auth/me", "/auth/logout"],
         "scan_endpoint": "/api/v1/scan",
         "threats": "/threat-history",
         "blocked": "/blocked-users"
     }
 
-# ----------  RUN  ---------
+
+# ------------------------------------------------------------------
+# RUN
+# ------------------------------------------------------------------
 if __name__ == "__main__":
-    import uvicorn  # This line should be INDENTED
+    import uvicorn
     
-    print("\n" + "="*60)
-    print("🛡️  CYBERSENTRY AI - AUTH + DETECTION v2.0")
-    print("="*60)
+    print("\n" + "=" * 60)
+    print("🛡️  CYBERSENTRY AI v2.0")
+    print("=" * 60)
     print("🌐 API: http://localhost:8000")
-    print("📊 Dashboard: streamlit run streamlit_app.py")
-    print("🔐 Admin Login: admin / Admin@123")
-    print("="*60 + "\n")
-    uvicorn.run(
+    print("📊 Dashboard: streamlit run dashboardapp.py")
+    print("🔬 Test scan: curl -X POST -F 'file=@test.txt' http://localhost:8000/api/v1/scan")
+    print("=" * 60 + "\n")
+    
+    uvicorn.run (
         "app:app",
-        host="0.0.0.0",
-        port=8000,
+        host=Config.API_HOST,
+        port=Config.API_PORT,
         reload=True
-    )  # This should also be indented
+    )
