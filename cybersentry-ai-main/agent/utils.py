@@ -31,7 +31,9 @@ def console(message: str):
     except ImportError:
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(f"[{timestamp}] {message}")
-
+        import re
+        clean_message = re.sub(r'\[.*?\]', '', message)
+        print(f"[{timestamp}] {clean_message}")
 
 def generate_hash(data: dict) -> str:
     """Create simple content hash for audit trail"""

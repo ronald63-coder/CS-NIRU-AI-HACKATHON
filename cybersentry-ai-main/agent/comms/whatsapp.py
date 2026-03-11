@@ -18,7 +18,7 @@ async def send_whatsapp(body: str, to: Optional[str] = None) -> str:
     Requires: TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM in env
     """
     if not TWILIO_AVAILABLE:
-        print(f"[WhatsApp MOCK] Would send: {body[:80]}...")
+        print(f"[WhatsApp MOCK] Would send: {body[:100]}...")
         return "mock_sent"
     
     sid = os.getenv("TWILIO_SID")
@@ -27,7 +27,9 @@ async def send_whatsapp(body: str, to: Optional[str] = None) -> str:
     to_num = to or os.getenv("TWILIO_TO")
     
     if not all([sid, token, from_num, to_num]):
-        raise ValueError("Missing Twilio credentials")
+        print("⚠️ Missing Twilio credentials - using mock mode")
+        print(f"[WhatsApp MOCK] Would send: {body[:100]}...")
+        return "mock_sent"
     
     client = Client(sid, token)
     

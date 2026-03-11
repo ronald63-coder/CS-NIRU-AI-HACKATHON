@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from typing import Dict, Any
 
-from agent.decisions import decide
+from agent.decision import decide
 from agent.comms.whatsapp import send_whatsapp
 from agent.comms.voice import call_customer
 from agent.utils import console, SeenCache
@@ -24,7 +24,9 @@ async def poll_threats(session: aiohttp.ClientSession) -> list:
         async with session.get(f"{API_URL}/threat-history") as resp:
             if resp.status == 200:
                 data = await resp.json()
-                return data.get("threat_history", [])
+                threats = data.get("threat_history", [])
+                console(f"[dim]Fetched {len(threats)} threats from API[/dim]")
+                return threats
             return []
     except Exception as e:
         console(f"[red]API error: {e}[/red]")
@@ -33,22 +35,36 @@ async def poll_threats(session: aiohttp.ClientSession) -> list:
 
 async def handle_threat(threat: Dict[str, Any], session: aiohttp.ClientSession):
     """Process single threat through decision engine"""
-    tid = threat.get("id") or f"{threat.get('timestamp')}_{threat.get('username')}"
+    # Create a unique ID for this threat
+    tid = threat.get("id") or f"{threat.get('timestamp')}_{threat.get('username')}_{threat.get('filename', 'unknown')}"
     
     if seen.already(tid):
         return
     
+    threat_level = threat.get("threat_level", "low")
+    username = threat.get("username", "unknown")
+    verdict = threat.get("verdict", "unknown")
+    risk_score = threat.get("risk_score", 0)
+    
     seen.add(tid)
-    console(f"[cyan]New threat: {threat.get('username')} | {threat.get('threat_level')}[/cyan]")
+    console(f"[cyan]New threat: {username} | {threat_level.upper()} | {verdict} | Risk: {risk_score}[/cyan]")
     
     # Decision
     action, reason = await decide(threat, session)
     
-    # Notify
-    await notify_human(threat, action, reason)
+    # Notify based on action
+    if action in ["AUTO-BLOCKED", "AWAITING-HUMAN"]:
+        await notify_human(threat, action, reason)
     
     # Log
-    console(f"[green]Action: {action} | {reason}[/green]")
+    action_colors = {
+        "AUTO-BLOCKED": "red",
+        "AWAITING-HUMAN": "yellow",
+        "MONITORED": "blue",
+        "IGNORED": "dim"
+    }
+    color = action_colors.get(action, "green")
+    console(f"[{color}]Action: {action} | {reason}[/{color}]")
 
 
 async def notify_human(threat: Dict[str, Any], action: str, reason: str):
@@ -56,28 +72,37 @@ async def notify_human(threat: Dict[str, Any], action: str, reason: str):
     username = threat.get("username", "unknown")
     level = threat.get("threat_level", "unknown")
     conf = threat.get("confidence", 0.0)
+    verdict = threat.get("verdict", "unknown")
+    risk_score = threat.get("risk_score", 0)
     
     # WhatsApp message
     msg = (
-        f"🛡️ *CyberSentry Agent Alert*\n\n"
-        f"User: *{username}*\n"
-        f"Threat: *{level.upper()}*\n"
-        f"Confidence: *{conf:.1%}*\n"
-        f"Action: *{action}*\n\n"
+        f"🚨 *CyberSentry Security Alert*\n\n"
+        f"👤 User: *{username}*\n"
+        f"⚠️ Threat Level: *{level.upper()}*\n"
+        f"🔍 Verdict: *{verdict.replace('_', ' ').upper()}*\n"
+        f"📊 Risk Score: *{risk_score}/100*\n"
+        f"🎯 Action: *{action}*\n\n"
+        f"📝 Reason: {reason}\n\n"
         f"Reply *YES* to unblock, *NO* to keep blocked."
     )
     
     try:
         await send_whatsapp(msg)
+        console(f"[green]WhatsApp alert sent for {username}[/green]")
     except Exception as e:
         console(f"[yellow]WhatsApp failed: {e}[/yellow]")
     
-    # Voice call for critical
-    if level == "critical" and conf > 0.85:
+    # Voice call for critical/blocked
+    if level in ["critical", "high"] or action == "AUTO-BLOCKED":
         try:
             msisdn = threat.get("msisdn") or os.getenv("TWILIO_TO")
             if msisdn:
+                # Remove whatsapp: prefix if present
+                if msisdn.startswith("whatsapp:"):
+                    msisdn = msisdn.replace("whatsapp:", "")
                 await call_customer(msisdn, level)
+                console(f"[green]Voice call initiated for {username}[/green]")
         except Exception as e:
             console(f"[yellow]Voice call failed: {e}[/yellow]")
 
@@ -89,9 +114,15 @@ async def main():
     
     async with aiohttp.ClientSession() as session:
         while True:
-            threats = await poll_threats(session)
-            
-            for threat in threats:
-                await handle_threat(threat, session)
-            
-            await asyncio.sleep(INTERVAL)
+            try:
+                threats = await poll_threats(session)
+                
+                for threat in threats:
+                    await handle_threat(threat, session)
+                
+                await asyncio.sleep(INTERVAL)
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                console(f"[red]Error in main loop: {e}[/red]")
+                await asyncio.sleep(INTERVAL)
