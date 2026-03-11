@@ -2,7 +2,7 @@
 
 **Advanced Malware & Insider Threat Detection with Automated Response**
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.28.0-red)](https://streamlit.io)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green)](https://fastapi.tiangolo.com)
 
@@ -25,31 +25,38 @@ This project was developed for the **AI Hackathon Kenya** under the **Cybersecur
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.11
 - pip package manager
 
 ### Installation
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/ronald63-coder/cybersentry-ai
-cd cybersentry-ai
+git clone https://github.com/ronald63-coder/CS-NIRU-AI-HACKATHON.git
+cd  CS-NIRU-AI-HACKATHON
 
 2.Install dependencies
 
 bash
 pip install -r requirements.txt
 
-3.Run the backend server
+3. Activate environment in each terminal
+venv311_new\Scripts\Activate
+
+4.Run the backend server( terminal 1)
 
 bash
-cd src
+
 python app.py
 
-4.Run the dashboard (in new terminal)
+5. Run the Agent (in new terminal)
+bash
+
+python run_agent.py
+
+6.Run the dashboard (in new terminal)
 
 bash
-cd src
 
-streamlit run dashboard.py
+streamlit run dashboardapp.py
 
