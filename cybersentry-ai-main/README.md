@@ -8,15 +8,54 @@
 
 ## 🎯 Overview
 
-CyberSentry AI is an integrated cybersecurity platform that combines AI-powered malware detection with behavioral analytics to provide comprehensive threat protection. Our solution uniquely correlates external file threats with internal user behavior to enable proactive threat neutralization.
+*CyberSentry AI* is an insider threat detection platform that combines AI-powered behavioral analytics with advanced malware scanning to protect organizations from within.
 
 ## ✨ Features
 
-- 🔍 **AI-Powered Malware Detection** - Real-time file analysis using machine learning
-- 👥 **User Behavior Analytics** - Continuous monitoring and anomaly detection  
-- 🚨 **Automated Threat Response** - Immediate account suspension for critical threats
-- 📊 **Real-time Dashboard** - Beautiful enterprise-grade security operations center
-- 🇰🇪 **Kenya-Optimized** - Designed for local cybersecurity challenges
+### 🤖 **6 Custom AI Agents**
+- **SENTRY** - Arthur-inspired coordinator (explains decisions conversationally)
+- **HUNTER** - Proactive threat hunting and anomaly detection
+- **ANALYST** - Deep forensic investigation with ML ensemble
+- **RESPONDER** - Autonomous incident response (3-second reaction)
+- **COMMUNICATOR** - Multi-channel alerts (IT, management, NC4)
+- **STRATEGIST** - Continuous learning from every incident
+
+### 🔍 **Multi-Layer Detection**
+- **YARA Rules** - 1000+ malware signatures
+- **Random Forest** - 94% accuracy on known threats
+- **Isolation Forest** - Zero-day anomaly detection
+- **XGBoost** - Ensemble voting for precision
+- **12 Features** - Entropy, PE structure, suspicious strings, user context
+
+### 👥 **User Behavior Monitoring**
+- Login time anomalies (2 AM flag)
+- Geographic anomalies (foreign IP detection)
+- Volume anomalies (mass downloads)
+- Department context (HR accessing engineering code)
+- Historical baselining (learns normal patterns)
+
+### ⚡ **Automated Response**
+- Auto-block users in 3 seconds
+- Isolate affected systems
+- Terminate active sessions
+- Generate NC4-compliant reports
+- Alert IT, management, and regulators
+
+### 📊 **Enterprise Dashboard**
+- Real-time threat visualization
+- Agent conversation logs
+- User risk scoring
+- Threat history with evidence
+- System health monitoring
+
+### 🇰🇪 **Kenya-Optimized**
+- Built for Kenyan organizations
+- Trained on local threat patterns
+- NC4 compliance reporting
+- M-PESA fraud detection
+
+
+---
 
 ## 🏆 Hackathon Project
 
